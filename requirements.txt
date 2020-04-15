@@ -1,0 +1,4 @@
+torch==1.2
+torchvision
+fire
+mpi4py
