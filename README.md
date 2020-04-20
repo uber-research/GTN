@@ -25,4 +25,4 @@ To train on MNIST simply run ``python train_cgtn.py``. This command reads ``expe
 
 ## Architecture Search on CIFAR10
 
-We based our architecture seearch experiments on [NAO](https://github.com/renqianluo/NAO_pytorch) which has a different LICENSE agreement. See ``architecture_search/`` for more details.
+The architecture search experiments is a separate component based on [NAO](https://github.com/renqianluo/NAO_pytorch) which has a different LICENSE agreement. See ``architecture_search/`` for more details.
