@@ -1,4 +1,5 @@
 torch==1.2
-torchvision
+torchvision==0.4.0
 fire
 mpi4py
+horovod==0.19.1

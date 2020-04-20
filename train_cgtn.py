@@ -25,12 +25,8 @@ from models import Classifier, Generator, Encoder, sample_model
 import inner_optimizers
 from gradient_helpers import SurrogateLoss, gradient_checkpointing
 import nest
-from nas_bench_modules import NASBenchClassifier
-import enas_micro_models as enas
 import models
-from tlogger import TLogger
-
-
+import tabular_logger as tlogger
 
 
 def main(num_inner_iterations=64,
@@ -82,6 +78,7 @@ def main(num_inner_iterations=64,
          step_by_step_validation=True,
          semisupervised_classifier_loss=True,
          semisupervised_student_loss=True,
+         automl_class=None,
 
          inner_loop_optimizer="SGD",
          meta_learn_labels=False,
@@ -181,7 +178,7 @@ def main(num_inner_iterations=64,
     else:
         raise ValueError(f"Inner loop optimizer '{inner_loop_optimizer}' not available")
 
-    automl = AutoML(
+    automl = (automl_class or AutoML)(
         generator=generator,
         optimizers=optimizers,
     )
@@ -824,20 +821,6 @@ class AutoML(nn.Module):
 
     def sample_learner(self, input_shape, device, allow_nas=False, learner_type="base",
                        iteration_maps_seed=False, iteration=None, deterministic=False, iterations_depth_schedule=100, randomize_width=False):
-        matrix = np.array([[0, 1, 1, 0, 1, 0, 1],
-                           [0, 0, 0, 0, 0, 1, 0],
-                           [0, 0, 0, 1, 0, 0, 0],
-                           [0, 0, 0, 0, 1, 0, 0],
-                           [0, 0, 0, 0, 0, 1, 0],
-                           [0, 0, 0, 0, 0, 0, 1],
-                           [0, 0, 0, 0, 0, 0, 0]])
-        vertices = ['input',
-                    'conv3x3-bn-relu',
-                    'conv3x3-bn-relu',
-                    'conv3x3-bn-relu',
-                    'conv3x3-bn-relu',
-                    'conv1x1-bn-relu',
-                    'output']
 
         if iteration_maps_seed:
             iteration = iteration - 1
@@ -845,55 +828,7 @@ class AutoML(nn.Module):
         else:
             encoding = None
 
-        if allow_nas and torch.randint(10, ()) == 0:
-            model = NASBenchClassifier(input_shape, matrix, vertices, num_stacks=1, num_modules_per_stack=1)
-        elif learner_type == "enas":
-            layers = 3
-            nodes = 5
-            channels = 32
-            arch = enas.sample_enas(nodes)
-            encoding = json.dumps(enas.encoding_to_dag(arch))
-            tlogger.info("Architecture", arch)
-            tlogger.info(f"nodes={nodes}, layers={layers}, channels={channels}")
-            model = enas.NASNetworkCIFAR([], 10, use_aux_head=False, steps=1,
-                                         keep_prob=1.0, drop_path_keep_prob=None,
-                                         nodes=nodes,
-                                         arch=arch,
-                                         channels=channels,
-                                         layers=layers  # N
-                                         )
-        elif learner_type == "enas_1":
-            layers = 1
-            nodes = 1
-            channels = 32
-            arch = enas.sample_enas(nodes)
-            encoding = json.dumps(enas.encoding_to_dag(arch))
-            tlogger.info("Architecture", arch)
-            tlogger.info(f"nodes={nodes}, layers={layers}, channels={channels}")
-            model = enas.NASNetworkCIFAR([], 10, use_aux_head=False, steps=1,
-                                         keep_prob=1.0, drop_path_keep_prob=None,
-                                         nodes=nodes,
-                                         arch=arch,
-                                         channels=channels,
-                                         layers=layers  # N
-                                         )
-        elif learner_type == "enas_fixed":
-            layers = 1
-            nodes = 5
-            channels = 32
-            # Use a random fixed architecture
-            arch = [[1, 6, 1, 5, 0, 13, 2, 7, 3, 8, 3, 5, 4, 9, 1, 9, 4, 9, 2, 7], [1, 14, 0, 8, 0, 8, 1, 7, 0, 14, 3, 5, 4, 14, 0, 14, 2, 9, 1, 13]]
-            encoding = json.dumps(enas.encoding_to_dag(arch))
-            tlogger.info("Architecture", arch)
-            tlogger.info(f"nodes={nodes}, layers={layers}, channels={channels}")
-            model = enas.NASNetworkCIFAR([], 10, use_aux_head=False, steps=1,
-                                         keep_prob=1.0, drop_path_keep_prob=None,
-                                         nodes=nodes,
-                                         arch=arch,
-                                         channels=channels,
-                                         layers=layers  # N
-                                         )
-        elif learner_type == "sampled":
+        if learner_type == "sampled":
             layers = min(4, max(0, iteration // iterations_depth_schedule))
             model, encoding = sample_model(input_shape, layers=layers, encoding=encoding, blocks=2,
                                            seed=iteration if deterministic else None, batch_norm_momentum=0)
@@ -935,11 +870,10 @@ class EndlessDataLoader(object):
                 yield batch
 
 def cli(**kwargs):
-    from tabular_logger import TLogger
-    global tlogger
+    from tabular_logger import set_tlogger
     with open("experiments/cgtn.json") as file:
         kwargs = dict(json.load(file), **kwargs)
-        tlogger = TLogger(kwargs.pop("name", "default"))
+    set_tlogger(kwargs.pop("name", "default"))
     return main(**kwargs)
 
 if __name__ == "__main__":
